@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>JavaScript Web Speech API Example</title>
+    <style>
+        #subs {
+            width: 300px;
+            border: 1px solid rgba(0, 0, 0, 0.4);
+            padding: 5px;
+            height: max-content;
+            overflow: hidden;
+        }
+    </style>
+    <script src="http://code.jquery.com/jquery-latest.min.js" type="text/javascript"></script>
+    <script type="text/javascript">
+
+        var final_transcript = '';
+        var recognizing = false;
+        var ignore_onend;
+        var recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+        var runnin = false
+        var interim_transcript = ""
+        var palabras = []
+
+        let extraTimeToShowSubs = 2000
+        let howMuchAheadSubsShow = 500
+        let startingTime = 0;
+        let clockCount = 0;
+
+        let subsDiv;
+        let numberOfWordsToShow = 8
+        let lastItemDisplayed;
+        let audioEl
+
+        let clock = 1500;
+
+
+        recognition.onstart = async () => {
+            recognizing = true;
+
+            startRecordingAudio()
+            //  agarrarPAlabtras()
+
+        };
+
+        recognition.onend = function () {
+            console.log("on end!!")
+            recognizing = false;
+            if (ignore_onend) {
+                return;
+            }
+            if (!final_transcript) {
+                return;
+            }
+
+            //   cleanUpTranscript()
+        };
+
+        //let finalObjectWithSubtitles = []
+
+        // function cleanUpTranscript() {
+        //   let c = 0;
+        //   for (let i = 1; i < palabras.length; i++) {
+        //     let pal = palabras[i].text
+        //     let prevWord = palabras[i - 1].text
+        //     let differenceWords = pal.substr(prevWord.length, 9999)
+
+        //     // let splitWords = pal.split(" ")
+        //     // let lastWord = splitWords[splitWords.length - 1]
+        //     // console.log(lastWord)
+
+        //     if (differenceWords.length > 0) finalObjectWithSubtitles.push({ text: differenceWords, time: palabras[i].time })
+        //   }
+
+
+        // }
+
+        //FALTA GUARDAR EL TIEMPO
+        function sumarTotalDeCaracteres() {
+            let c = 0;
+            for (let i = 0; i < palabras.length; i++) {
+                let pal = palabras[i].text
+                c += pal.length
+            }
+            return c
+        }
+
+        function saveWords() {
+
+            let parte;
+
+            // if (palabras.length == 0) parte = interim_transcript
+            // else {
+            //   let pal = palabras[palabras.length - 1].text;
+            //   parte = interim_transcript.substr(sumarTotalDeCaracteres() + pal.length, 999)
+            // }
+
+            parte = interim_transcript
+
+            let wantedTime = Date.now() - startingTime
+
+            let lastWordCount = 0;
+            if (palabras.length > 0) lastWordCount = palabras[palabras.length - 1].wordCount
+
+            let wordCount = interim_transcript.split(" ").length
+            if (wordCount < lastWordCount) wordCount = lastWordCount
+
+            palabras.push({ time: wantedTime, wordCount: wordCount })
+
+            // setTimeout(() => {
+            //   if (recognizing) agarrarPAlabtras()
+            // }, clock)
+        }
+
+        recognition.onresult = function (event) {
+
+            interim_transcript = '';
+            for (var i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    final_transcript += event.results[i][0].transcript;
+                } else {
+                    interim_transcript += event.results[i][0].transcript;
+
+                }
+            }
+
+
+            saveWords()
+
+
+            $("#final").html("F:" + format(final_transcript));
+            $("#draft").html("I:" + format(interim_transcript));
+        };
+
+        function format(s) {
+            return linebreak(capitalize(s));
+        }
+
+        function linebreak(s) {
+            return s.replace(/\n\n/g, '<p></p>').replace(/\n/g, '<br>');
+        }
+
+        function capitalize(s) {
+            return s.replace(/\S/, function (m) {
+                return m.toUpperCase();
+            });
+        }
+        let stream
+        let mediaRecorder
+        let chunks = [];
+
+        const startRecordingAudio = async () => {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+            startingTime = Date.now()
+            chunks = [];
+            mediaRecorder.ondataavailable = (e) => {
+                chunks.push(e.data);
+            }
+            //function to catch error
+            mediaRecorder.onerror = (e) => {
+                alert(e.error);
+            }
+
+            mediaRecorder.onstop = (e) => {
+                let blod = new Blob(chunks);
+                //create url for audio
+                let url = URL.createObjectURL(blod);
+                //pass url into audio tag
+                let audio = document.createElement("audio")
+                audio.id = "aud"
+                audio.src = url;
+                audio.controls = true;
+                document.body.append(audio)
+            }
+
+
+
+        }
+
+        $(document).ready(() => {
+            recognition.start();
+            ignore_onend = false;
+            //await startRecordingAudio()
+
+        });
+
+        function stop() {
+            recognition.stop()
+
+            mediaRecorder.stop();
+
+
+        }
+
+
+        function whichWord(currentClockTime) {
+            let timeToEval = currentClockTime + howMuchAheadSubsShow
+            for (let i = 0; i < palabras.length; i++) {
+                try {
+                    if (palabras[i].time < currentClockTime && i < palabras.length && palabras[i + 1].time > currentClockTime) {
+                        return palabras[i]
+                    }
+                } catch (e) {
+                    return null
+                }
+            }
+        }
+
+        function cutByWords(str, fromWord, howMany) {
+            let words = str.split(" ");
+            let rtn = "";
+            for (let i = fromWord; i <= fromWord + howMany; i++) {
+                if (words[i]) rtn += words[i] + " "
+            }
+            return rtn;
+        }
+
+        function clockFuncForSubs() {
+            let currentClockTime = audioEl.currentTime * 1000
+            //console.log("current clock time:", currentClockTime)
+
+
+
+
+            let whichItem = whichWord(currentClockTime)
+
+            if (!whichItem && !!lastItemDisplayed) {
+                lastItemDisplayed = null;
+                return console.warn("no more subs to show")
+
+            }
+
+            let textToShow
+            if (whichItem instanceof Object && whichItem.wordCount) {
+                let fromWhere = whichItem.wordCount - numberOfWordsToShow
+                if (fromWhere < 0) fromWhere = 0
+                //cut words by the 
+
+                textToShow = cutByWords(final_transcript, fromWhere, numberOfWordsToShow)
+            }
+            subsDiv.innerHTML = textToShow ? textToShow : ''
+            console.log("clock:", currentClockTime, whichItem)
+
+            // if (currentClockTime + 2000 > palabras[palabras.length - 1].time) return;
+
+            lastItemDisplayed = whichItem
+            //  requestAnimationFrame(clockFuncForSubs)
+        }
+
+        function throwSubs() {
+            audioEl = document.querySelector("audio")
+            audioEl.ontimeupdate = clockFuncForSubs
+            audioEl.currentTime = 0
+            audioEl.play()
+            subsDiv = document.querySelector("#subs");
+            subsDiv.innerHTML = "";
+
+            clockCount = Date.now()
+            //  clockFuncForSubs()
+        }
+    </script>
+</head>
+
+<body>
+    <span id="final"></span>
+    <br>
+    <span id="draft"></span>
+    <hr>
+
+    <button onclick="stop()">stop</button>
+
+
+    <button onclick="throwSubs()">launch subs!</button>
+    <hr>
+    <h3 id="subs"></h3>
+
+</body>
+
+</html>
